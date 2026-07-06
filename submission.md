@@ -129,3 +129,21 @@ The rating flow never created a notification. rate_song validated the user, song
 Your fix and side-effect check
 
 I added a notification step to rate_song after the rating is saved. If the rater is not the same person as the song sharer, the service now creates a song_rated notification with the rater's username, the song title, and the score. I also added targeted tests in tests/test_notifications.py to check two related behaviors: first, that rating someone else's song creates exactly one notification for the sharer, and second, that rating your own song does not create a self-notification.
+
+Issue 5: The last song in a playlist never shows up
+
+How I reproduced it
+
+I used the playlist test setup in tests/test_playlists.py. The reproduction case is a playlist with five songs inserted in order. When get_playlist_songs is called for that playlist, the expected result is all five songs in order, but the bug makes the returned list stop at the fourth song.
+
+How I found the root cause
+
+My path was README -> routes/playlists.py -> services/playlist_service.py -> tests/test_playlists.py. The playlists route showed that the endpoint goes straight to get_playlist_songs. In that function, the query itself looked fine: it joins through playlist_entries, filters by playlist_id, and orders by position. I knew this was the cause when I got to the return line and saw songs[:-1]. That slice removes the last element from the list every time, even when the query already returned the correct rows.
+
+The root cause
+
+The service was slicing off the final song before returning the result. In Python, songs[:-1] means "all items except the last one." Because get_playlist_songs returned [song.to_dict() for song in songs[:-1]], every non-empty playlist lost its final song even though the database query had already fetched it.
+
+Your fix and side-effect check
+
+I changed the return statement to use the full songs list instead of songs[:-1]. That fixes the missing-last-song bug without changing the ordering logic or the empty-playlist behavior. I also checked the existing tests around this function: one test expects all five songs to be returned, one checks that the order stays Track 1 through Track 5, and one checks that an empty playlist still returns an empty list.
