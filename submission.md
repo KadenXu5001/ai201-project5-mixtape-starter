@@ -1,5 +1,13 @@
 Mixtape Codebase Map
 
+AI usage:
+
+I used AI extensively by asking it to summerize which functions/files were likely to host those specific issues to help trace through the documentation and to find critical files where the issues listed would likely be found.
+
+After finding the the issues, I had AI help assist my analysis writing. I think AI did a good job at this, since I was able to spot the bug in this situation pretty easily (since the made up bugs were kinda obvious), so I had AI help communicate my thinking process.
+
+One instance that the AI didn't help me on was fixing issue 4. In that issue, the AI directed me to look at Notificiation Service's other functions first (namely create notificatoin) before looking at the actual correct function, rate song. I found this quite easy to defuse though since the bug ticket showed how it did it.
+
 Overview
 
 This project is a small Flask API. The code is organized into app setup, models, routes, services, tests, and seed data. The routes are mostly thin and the service layer holds most of the behavior.
@@ -138,7 +146,7 @@ I used the playlist test setup in tests/test_playlists.py. The reproduction case
 
 How I found the root cause
 
-My path was README -> routes/playlists.py -> services/playlist_service.py -> tests/test_playlists.py. The playlists route showed that the endpoint goes straight to get_playlist_songs. In that function, the query itself looked fine: it joins through playlist_entries, filters by playlist_id, and orders by position. I knew this was the cause when I got to the return line and saw songs[:-1]. That slice removes the last element from the list every time, even when the query already returned the correct rows.
+My path was README -> routes/playlists.py -> services/playlist_service.py -> tests/test_playlists.py. The playlists route showed that the endpoint goes straight to get_playlist_songs. In that function, the query itself looked fine: it joins through playlist_entries, filters by playlist_id, and orders by position. That slice removes the last element from the list every time, even when the query already returned the correct rows.
 
 The root cause
 
