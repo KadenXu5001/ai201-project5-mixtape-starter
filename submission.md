@@ -111,3 +111,21 @@ The search query was joining Song to song_tags without removing duplicate parent
 Your fix and side-effect check
 
 I added distinct() to the search query so the result set is collapsed back to unique Song rows after the join. That fixes the duplicate-result problem without changing the title or artist filtering behavior. I also checked the surrounding behavior against the existing tests: songs with one tag should still appear once, songs with no tags should still appear once because the query still uses an outer join, and non-matching searches should still return an empty list.
+
+Issue 4: I got notified when a friend added my song to a playlist but not when they rated it
+
+How I reproduced it
+
+I traced the two interaction paths side by side. The playlist-add flow already created a notification for the song sharer, but the rating flow only saved the Rating row. The simplest reproduction case was a user rating a song that was shared by someone else and then checking whether a Notification row was created for the sharer.
+
+How I found the root cause
+
+My path was README -> routes/songs.py -> services/notification_service.py. The songs route showed that rating a song goes through rate_song. In notification_service.py, I compared rate_song with add_to_playlist. add_to_playlist calls create_notification after it updates the playlist, but rate_song ended right after db.session.commit() and returned the rating.
+
+The root cause
+
+The rating flow never created a notification. rate_song validated the user, song, and score, then created or updated the Rating and committed it, but it did not call create_notification for the song sharer. Because that step was missing entirely, rating a song could never produce the notification that the playlist-add flow already produced.
+
+Your fix and side-effect check
+
+I added a notification step to rate_song after the rating is saved. If the rater is not the same person as the song sharer, the service now creates a song_rated notification with the rater's username, the song title, and the score. I also added targeted tests in tests/test_notifications.py to check two related behaviors: first, that rating someone else's song creates exactly one notification for the sharer, and second, that rating your own song does not create a self-notification.
