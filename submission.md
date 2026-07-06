@@ -66,7 +66,7 @@ I looked at the streak tests first and used the Saturday-to-Sunday case in tests
 
 How I found the root cause
 
-My path was README -> routes/songs.py -> services/streak_service.py -> tests/test_streaks.py. In update_listening_streak, I found the exact condition that handles consecutive-day listens. The moment I was confident was when I saw that the increment branch only ran when days_since_last == 1 and today.weekday() != 6. Since Python returns 6 for Sunday, that meant Sunday was being excluded from normal consecutive-day streak behavior.
+My path was README -> routes/songs.py -> services/streak_service.py -> tests/test_streaks.py. In update_listening_streak, I found the exact condition that handles consecutive-day listens. I knew this was the cause when I saw that the increment branch only ran when days_since_last == 1 and today.weekday() != 6. Since Python returns 6 for Sunday, that meant Sunday was being excluded from normal consecutive-day streak behavior.
 
 The root cause
 
@@ -76,6 +76,24 @@ Your fix and side-effect check
 
 I removed the Sunday exclusion so the code now increments whenever days_since_last == 1. I also checked the surrounding logic to make sure the same-day case still does nothing and the skipped-day case still resets to 1.
 
+Issue 2: Friends Listening Now shows people from yesterday
+
+How I reproduced it
+
+I traced this through the feed behavior and the seed data. In seed_data.py, the comments say that events within the past 30 minutes should appear in listening now, while older events should not. In services/feed_service.py, the current filter included any friend event from the last 24 hours. That means a friend who listened a few hours ago, or late yesterday if it was still within 24 hours, would still show up in a feed that is supposed to represent who is listening now.
+
+How I found the root cause
+
+My path was README -> routes/feed.py -> services/feed_service.py -> seed_data.py. The feed route showed that the listening-now endpoint goes straight to get_friends_listening_now. In that function, I found the cutoff based on RECENT_THRESHOLD. I knew this was the cause when I compared RECENT_THRESHOLD = timedelta(hours=24) against the seed data comment that defines listening now as the past 30 minutes. That was the exact mismatch controlling which rows qualified for the feed.
+
+The root cause
+
+The listening-now query was using a 24-hour recency window instead of a much shorter currently-listening window. Because ListeningEvent.listened_at only had to be newer than now minus 24 hours, the feed included stale events that were recent in a day-scale sense but not recent enough to count as listening now.
+
+Your fix and side-effect check
+
+I changed RECENT_THRESHOLD from 24 hours to 30 minutes so the filter matches the intended behavior described by the app's own seed data. I also added targeted tests in tests/test_feed.py to check two related behaviors after the change: first, that old friend events are excluded while recent friend events are still included, and second, that the feed still returns only the most recent song per friend when a friend has multiple recent listens.
+
 Issue 3: The same song keeps showing up twice in search
 
 How I reproduced it
@@ -84,7 +102,7 @@ I used the multi-tag scenario described in tests/test_search.py. The reproductio
 
 How I found the root cause
 
-My path was README -> routes/songs.py -> services/search_service.py -> tests/test_search.py. The songs route showed that search requests go straight to search_service.search_songs. In that function, I found a query that selects Song, outer joins to song_tags, and then filters on title or artist. The moment I was confident was when I compared that join against the test fixture that gives one song three tag rows. That means the query can return the same Song once for each matching join row.
+My path was README -> routes/songs.py -> services/search_service.py -> tests/test_search.py. The songs route showed that search requests go straight to search_service.search_songs. In that function, I found a query that selects Song, outer joins to song_tags, and then filters on title or artist. I knew this was the cause when I compared that join against the test fixture that gives one song three tag rows. That means the query can return the same Song once for each matching join row.
 
 The root cause
 
